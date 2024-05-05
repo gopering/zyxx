@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zyxx
+  namespace: mirror
+  labels:
+    app: zyxx
+spec:
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: zyxx
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%         #滚动升级时先启动的pod数量
+      maxUnavailable: 25%   #滚动升级时允许的最大unavailable的pod数量
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: zyxx
+    spec:
+      containers:
+      - name: zyxx
+        image: {{.Image}}
+        imagePullPolicy: IfNotPresent
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sh","-c","sleep 5"]
+        ports:
+        - containerPort: 8887
+        readinessProbe:
+          tcpSocket:
+            port: 8887
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 8887
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        resources:
+          requests:
+            cpu: 200m
+            memory: 50Mi
+          limits:
+            cpu: 200m
+            memory: 50Mi
+        volumeMounts:
+        - name: timezone
+          mountPath: /etc/localtime
+      imagePullSecrets:
+      - name: dockerlogin
+      volumes:
+        - name: timezone
+          hostPath:
+            path: /usr/share/zoneinfo/Asia/Shanghai
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: zyxx-svc
+  namespace: mirror
+spec:
+  ports:
+    - port: 8887
+      protocol: TCP
+      targetPort: 8887
+  selector:
+    app: zyxx
+  # type: ClusterIP
+
+---
+
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gotest-hpa-c
+  namespace: meice-admin
+  labels:
+    app: gotest-hpa-c
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gotest
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 80
+
+---
+
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gotest-hpa-m
+  namespace: meice-admin
+  labels:
+    app: gotest-hpa-m
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gotest
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: 80
